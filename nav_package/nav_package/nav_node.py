@@ -56,7 +56,7 @@ class NavNode(Node):
 
         self.current_wp = 0
 
-        self.pos_sub = self.create_subscription()
+        # self.pos_sub = self.create_subscription()
 
         self.green_sub = self.create_subscription(
             Point,
