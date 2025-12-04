@@ -2,8 +2,21 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point
+from nav_msgs.msg import Odometry
 from nav2_msgs.action import NavigateToPose
 import math
+
+'''
+TODO:
+
+1. Instead of pausing, do a spin to check for objects
+2. If robot is stuck in one place (position has not changed for a few seconds), execute a function to unstick it
+3. Obstacle avoidance in a very small radius
+4. Make sure green and red detection in eye_node is accurate enough
+5. Mark each object
+6. Keep track of number of objects
+7. Do not visit previously visited objects
+''' 
 
 class NavNode(Node):
     
@@ -12,7 +25,26 @@ class NavNode(Node):
         
         self._action_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         
-        self.arena_waypoints = [
+        self.test_waypoints = [ # Gazebo test map coordinates
+            (-1.5, 4.0),
+            (-1.5, -3.75),
+            (-0.207, 4.25),
+            (1.45, 2.3),
+            (3.50, 2.44),
+            (3.50, 4.0),
+            (-0.207, 4.25),
+            (0.229, -3.6),
+            (2.6, -3.6),
+            (-1.41, -2.54),
+            (2.51, -1.77),
+            (1.65, -0.275),
+            (2.5, 0.751),
+            (5.57, 3.8),
+            (-5.57, -3.8),
+            (4.35, -2.25)
+        ]
+        
+        self.arena_waypoints = [ # real life arena coords
             (-0.8061, 0.53), # top left corner
             (-2.19, -0.844), # next to U-shaped walls
             (-3.97, -2.57), # bottom left corner
@@ -31,8 +63,9 @@ class NavNode(Node):
         self.current_x = None
         self.current_y = None
         self.pause_timer = None
+        # self.state = None
         
-        self.goal_tolerance = 0.05  # cm
+        self.goal_tolerance = 0.2  # cm - smaller amounts for real life
         self.check_interval = 0.2   # milliseconds
         self.pause_duration = 5.0   # seconds
         
@@ -43,20 +76,32 @@ class NavNode(Node):
             10
         )
         
+        self.odom_sub = self.create_subscription(
+            Odometry, 
+            '/odom',
+            self.odom_callback,
+            10
+        )
+        
+        # self.state_timer = self.create_timer(10, self.display_state)
+        
         self.distance_timer = self.create_timer(self.check_interval, self.check_distance)
         
         self.get_logger().info("nav_node started and waiting for Nav2 action server...")
         
         self.navigate()
         
+    # def display_state(self, state): # for debugging
+    #     self.get_logger().info(state)
+        
     def pos_callback(self, msg):
-                
-        # self.get_logger().info(msg)
         
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
         
         self.get_logger().info(f'X: {self.current_x}, Y: {self.current_y}')
+        
+        # if the position hasn't changed in pause duration + 1, trigger unstuck function
         
     def check_distance(self):
         
@@ -65,7 +110,7 @@ class NavNode(Node):
         
         distance = math.sqrt((self.current_x - self.current_goal_x) ** 2 + (self.current_y - self.current_goal_y) ** 2)
         
-        self.get_logger().info(f'Distance to goal: {distance}')
+        # self.get_logger().info(f'Distance to goal: {distance}')
         
         if distance < self.goal_tolerance:
             self.get_logger().info('Point reached.')
@@ -86,7 +131,7 @@ class NavNode(Node):
             self.pause_timer.cancel()
             self.pause_timer = None
         
-        self.current_wp = (self.current_wp + 1) % len(self.arena_waypoints)
+        self.current_wp = (self.current_wp + 1) % len(self.test_waypoints)
         
         self.get_logger().info('Resuming navigation.')
         
@@ -97,7 +142,7 @@ class NavNode(Node):
         if self.is_navigating:
             return
         
-        x, y = self.arena_waypoints[self.current_wp]
+        x, y = self.test_waypoints[self.current_wp]
         self.get_logger().info(f"Going to waypoint {self.current_wp}: ({x}, {y})")
         self.send_goal(x, y)
                 
@@ -118,9 +163,7 @@ class NavNode(Node):
         goal_msg.pose.pose.position.z = 0.0
         
         goal_msg.pose.pose.orientation.w = 1.0
-        
-        
-        
+               
         self._action_client.wait_for_server()
         self._send_goal_future = self._action_client.send_goal_async(goal_msg)
         self._send_goal_future.add_done_callback(self.goal_response_callback)

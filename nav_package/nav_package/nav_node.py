@@ -1,6 +1,5 @@
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped, Point
 from nav2_msgs.action import NavigateToPose
@@ -14,12 +13,6 @@ class NavNode(Node):
 
     def __init__(self):
         super().__init__('nav_node')
-
-        qos_profile = QoSProfile(
-                    reliability=QoSReliabilityPolicy.BEST_EFFORT,
-                    history=QoSHistoryPolicy.KEEP_LAST,
-                    depth=10
-                )
         
         self._action_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
 
