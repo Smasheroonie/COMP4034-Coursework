@@ -24,13 +24,39 @@ class NavNode(Node):
         self._action_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
 
         self.waypoints = [
-            (0.347, -1.51),
-            (2.67, -2.1),
-            (3.87, -3.54),
-            (0.79, -4.46),
-            (-2.21, -2.26)
+            (-1.5, 4.0),
+            (-1.5, -3.75),
+            (-0.207, 4.25),
+            (1.45, 2.3),
+            (3.50, 2.44),
+            (3.50, 4.0),
+            (-0.207, 4.25),
+            (0.229, -3.6),
+            (2.6, -3.6),
+            (-1.41, -2.54),
+            (2.51, -1.77),
+            (1.65, -0.275),
+            (2.5, 0.751),
+            (5.57, 3.8),
+            (-5.57, -3.8),
+            (4.35, -2.25)
         ]
+
+        self.arena_waypoints = [
+            (-0.8061, 0.53), # top left corner
+            (-2.19, -0.844), # next to U-shaped walls
+            (-3.97, -2.57), # bottom left corner
+            (-3.32, -3.49), # a bit along to the right
+            (-2.14, -2.34), # facing the bottom of the U-shaped walls
+            (-1.36, -2.84),# turn right
+            (-0.274, -1.59), # turn left, facing bottom of top L-shaped wall
+            (1.12, -1.37), # top right corner
+            (-1.91, -4.43) # bottom right corner
+        ]
+
         self.current_wp = 0
+
+        self.pos_sub = self.create_subscription()
 
         self.green_sub = self.create_subscription(
             Point,
@@ -48,7 +74,7 @@ class NavNode(Node):
         )
         self.latest_red = None
 
-        self.timer = self.create_timer(10.0, self.timer_callback)
+        self.timer = self.create_timer(30.0, self.timer_callback)
 
         self.get_logger().info("nav_node started and waiting for Nav2 action server...")
 
@@ -70,12 +96,12 @@ class NavNode(Node):
             return
 
         # Otherwise: follow waypoint patrol
-        x, y = self.waypoints[self.current_wp]
+        x, y = self.arena_waypoints[self.current_wp]
         self.get_logger().info(f"Going to waypoint {self.current_wp}: ({x}, {y})")
         self.send_goal(x, y)
 
         # Move to next waypoint
-        self.current_wp = (self.current_wp + 1) % len(self.waypoints)
+        self.current_wp = (self.current_wp + 1) % len(self.arena_waypoints)
 
     def send_goal(self, x, y):
 
@@ -128,3 +154,6 @@ def main(args=None):
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
