@@ -3,6 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from geometry_msgs.msg import PoseStamped, Point
 from nav2_msgs.action import NavigateToPose
+import math
 
 class NavNode(Node):
     
@@ -25,15 +26,78 @@ class NavNode(Node):
         
         self.current_wp = 0
         
+        self.point_reached = False
+        
+        self.goal_tolerance = 0.05
+        
+        self.current_goal_x = None
+        self.current_goal_y = None
+        
+        self.current_x = None
+        self.current_y = None
+        
+        self.pos_sub = self.create_subscription(
+            PoseStamped,
+            '/amcl_pose',
+            self.pos_callback,
+            10
+        )
+        
+        self.distance_timer = self.create_timer(0.1, self.check_distance)
+        
         self.get_logger().info("nav_node started and waiting for Nav2 action server...")
         
-    def nav_callback(self):
-        x, y = self.arena_waypoints[self.current_wp]
-        self.get_logger().info(f"Going to waypoint {self.current_wp}: ({x}, {y})")
-        self.send_goal(x, y)
+        self.navigate()
+        
+    def pos_callback(self, msg):
+                
+        self.get_logger().info(msg)
+        
+        self.current_x = msg.pose.pose.position.x
+        self.current_y = msg.pose.pose.position.y
+        
+        self.get_logger().info(f'X: {self.current_x}, Y: {self.current_y}')
+        
+    def check_distance(self):
+        
+        if self.point_reached or self.current_goal_x is None or self.current_goal_y is None or self.current_x is None or self.current_y is None:
+            return
+        
+        distance = math.sqrt((self.current_x - self.current_goal_x) ** 2 + (self.current_y - self.current_goal_y) ** 2)
+        
+        self.get_logger().info(f'Distance to goal: {distance}')
+        
+        if distance < self.goal_tolerance:
+            self.get_logger().info('Point reached.')
+            self.pause_navigation()
+            
+    def pause_navigation(self):
+        
+        self.point_reached = True
+        
+        self.pause_timer = self.create_timer(5.0, self.resume_navigation)
+        
+    def resume_navigation(self):
+        
+        self.pause_timer.cancel()
+        
+        self.point_reached = False
         
         self.current_wp = (self.current_wp + 1) % len(self.arena_waypoints)
         
+        self.get_logger().info('Resuming navigation.')
+        
+        self.navigate()
+        
+    def navigate(self):
+        
+        if self.point_reached:
+            return
+        
+        x, y = self.arena_waypoints[self.current_wp]
+        self.get_logger().info(f"Going to waypoint {self.current_wp}: ({x}, {y})")
+        self.send_goal(x, y)
+                
     def send_goal(self, x, y):
         
         goal_msg = NavigateToPose.Goal()
@@ -47,6 +111,9 @@ class NavNode(Node):
         goal_msg.pose.pose.position.z = 0.0
         
         goal_msg.pose.pose.orientation.w = 1.0
+        
+        self.current_goal_x = x
+        self.current_goal_y = y
         
         self._action_client.wait_for_server()
         self._send_goal_future = self._action_client.send_goal_async(goal_msg)
@@ -65,7 +132,9 @@ class NavNode(Node):
         self._get_result_future.add_done_callback(self.get_result_callback)
         
     def get_result_callback(self, future):
-        self.get_logger().info("Navigation finished.")
+        self.get_logger().info("Point reached but navigation stopped.")
+        
+        
         
 def main(args=None):
     rclpy.init(args=args)
