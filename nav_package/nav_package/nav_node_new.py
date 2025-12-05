@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point, Twist, Vector3
 from nav_msgs.msg import Odometry
 from nav2_msgs.action import NavigateToPose
 import math
@@ -57,15 +57,17 @@ class NavNode(Node):
         ]
         
         self.current_wp = 0
-        self.is_navigating = False
+        # self.is_navigating = False
         self.current_goal_x = None
         self.current_goal_y = None
         self.current_x = None
         self.current_y = None
         self.pause_timer = None
-        # self.state = None
+        self.state = None
         
-        self.goal_tolerance = 0.2  # cm - smaller amounts for real life
+        self._goal_handle = None
+        
+        self.goal_tolerance = 0.3  # cm - smaller amounts for real life
         self.check_interval = 0.2   # milliseconds
         self.pause_duration = 5.0   # seconds
         
@@ -76,12 +78,14 @@ class NavNode(Node):
             10
         )
         
-        self.odom_sub = self.create_subscription(
-            Odometry, 
-            '/odom',
-            self.odom_callback,
-            10
-        )
+        # self.odom_sub = self.create_subscription(
+        #     Odometry, 
+        #     '/odom',
+        #     self.odom_callback,
+        #     10
+        # )
+        
+        self.turn_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         
         # self.state_timer = self.create_timer(10, self.display_state)
         
@@ -105,7 +109,7 @@ class NavNode(Node):
         
     def check_distance(self):
         
-        if not self.is_navigating or self.current_goal_x is None or self.current_goal_y is None or self.current_x is None or self.current_y is None:
+        if self.state != 'navigating' or self.current_goal_x is None or self.current_goal_y is None or self.current_x is None or self.current_y is None:
             return
         
         distance = math.sqrt((self.current_x - self.current_goal_x) ** 2 + (self.current_y - self.current_goal_y) ** 2)
@@ -116,9 +120,28 @@ class NavNode(Node):
             self.get_logger().info('Point reached.')
             self.pause_navigation()
             
+    def cancel_done(self, future):
+        cancel_response = future.result()
+        if len(cancel_response.goals_canceling) > 0:
+            self.get_logger().info('Goal successfully canceled')
+        else:
+            self.get_logger().info('Goal failed to cancel')
+            
     def pause_navigation(self):
         
-        self.is_navigating = False
+        self.state = 'pause'
+        
+        future = self._goal_handle.cancel_goal_async()
+        future.add_done_callback(self.cancel_done)
+        
+        msg = Twist()
+        a = Vector3()
+        
+        a.z = 0.5
+        msg.angular = a
+        
+        self.turn_pub.publish(msg) # Not working. Robot not spinning, must fix
+        self.get_logger().info('Searching...')
         
         if self.pause_timer:
             self.pause_timer.cancel()
@@ -130,6 +153,14 @@ class NavNode(Node):
         if self.pause_timer:
             self.pause_timer.cancel()
             self.pause_timer = None
+            
+        msg = Twist()
+        a = Vector3()
+        
+        a.z = 0.0
+        msg.angular = a
+        
+        self.turn_pub.publish(msg)
         
         self.current_wp = (self.current_wp + 1) % len(self.test_waypoints)
         
@@ -139,7 +170,7 @@ class NavNode(Node):
         
     def navigate(self):
         
-        if self.is_navigating:
+        if self.state == 'navigating':
             return
         
         x, y = self.test_waypoints[self.current_wp]
@@ -148,7 +179,7 @@ class NavNode(Node):
                 
     def send_goal(self, x, y):
 
-        self.is_navigating = True
+        self.state = 'navigating'
 
         self.current_goal_x = x
         self.current_goal_y = y
@@ -173,8 +204,10 @@ class NavNode(Node):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().info('Goal rejected :(')
-            self.is_navigating = False
+            self.state = 'pause'
             return
+        
+        self._goal_handle = goal_handle
 
         self.get_logger().info('Goal accepted :)')
 
