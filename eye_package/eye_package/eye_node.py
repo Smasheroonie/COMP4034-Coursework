@@ -97,14 +97,14 @@ class ImageSubscriber(Node):
             return None
         
     def image_callback(self, data):
-        self.get_logger().info('Receiving video frame')
+        # self.get_logger().info('Receiving video frame')
     
         current_frame = self.br.imgmsg_to_cv2(data, desired_encoding='bgr8')
         
         self.image = current_frame
         
     def dimage_callback(self, data):
-        self.get_logger().info('Receiving dvideo frame')
+        # self.get_logger().info('Receiving dvideo frame')
     
         current_frame = self.br.imgmsg_to_cv2(data, desired_encoding='passthrough')
         

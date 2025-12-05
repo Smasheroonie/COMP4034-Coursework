@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'nav_node = nav_package.nav_node_new:main',
+            'nav_node = nav_package.nav_node:main',
             'position_tracker = nav_package.position_tracker:main'
         ],
     },
